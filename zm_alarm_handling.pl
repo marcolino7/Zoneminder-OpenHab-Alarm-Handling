@@ -75,10 +75,11 @@ while( 1 )
 		#If an alarm status is detected
         if ($state == STATE_ALARM || $state == STATE_ALERT)
         {
-			Info ("Alarm Detected on cam=".$monitor->{Name});
+			#Info ("Alarm Detected on cam=".$monitor->{Name});
 			my $count = @alarmcount[$monitor->{Id}]; 	#Retrieve count from array
 			$count = $count+1;							#Increase count of one
 			@alarmcount[$monitor->{Id}] = $count;		#Update the array
+			Info ("Alarm Detected on cam=".$monitor->{Name});
 			if ($count >= ALARM_COUNT) {
 				if (@camstatus[$monitor->{Id}] ne decodeState($state))	#If CAM status is not equal to previus status
 				{
@@ -92,12 +93,12 @@ while( 1 )
 		#If an alarm is rearmed
 		if ($state == STATE_IDLE || $state == STATE_TAPE)
         {
-			Info ("Alarm Rearmed on cam=".$monitor->{Name});
 			if (@camstatus[$monitor->{Id}] ne decodeState($state))
 			{
 				@alarmcount[$monitor->{Id}] = 0;					#reset alarmcount array
 				&sendtoOH($monitor->{Id},$state);					#send off command to OH
 				@camstatus[$monitor->{Id}] = decodeState($state);	#Update the array with last status
+				Info ("Alarm Rearmed on cam=".$monitor->{Name});
 				Info ("Alarm Count= @alarmcount\n");
 			}
 		}
