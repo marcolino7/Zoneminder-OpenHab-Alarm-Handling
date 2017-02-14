@@ -1,8 +1,15 @@
 #!/usr/bin/perl -w
 
-#use LWP::UserAgent;
-use strict;
 
+#---------------- Configurations ------------------------------------------------------------------------------------
+use constant OPENHAB_URL => "http://openhab2:8080";		#Base URL of Openhab
+use constant MONITOR_RELOAD_INTERVAL => 300;			#Time in second for reload Monitor from ZM
+use constant SLEEP_DELAY=>2;							#Time in second for checking loop
+use constant ALARM_COUNT => 2;							#Number of alarm event to raise action to OpenHab
+
+#---------------- End of Configurations ------------------------------------------------------------------------------
+
+use strict;
 use ZoneMinder;
 use warnings;
 use DBI;
@@ -12,12 +19,8 @@ $| = 1;
 $SIG{INT}  = \&signal_handler;
 $SIG{TERM} = \&signal_handler;
 
-use constant OPENHAB_URL => "http://openhab2:8080";
-use constant MONITOR_RELOAD_INTERVAL => 300;
-use constant SLEEP_DELAY=>2;
-
 my %monitors;
-my $dbh = zmDbConnect();
+my $dbh = zmDbConnect();								#ZM function to create DB object
 my $monitor_reload_time = 0;
 my $apns_feedback_time = 0;
 my $proxy_reach_time=0;
@@ -35,7 +38,6 @@ Info( "Alarm Monitor Handling module starting" );
 
 while( 1 )
 {
-
 	my $eventFound = 0;
     if ( (time() - $monitor_reload_time) > MONITOR_RELOAD_INTERVAL )
         {
@@ -48,7 +50,6 @@ while( 1 )
 		Info ("Firstrun status= @firstrun\n");
 		Info ("Alarm Status= @camstatus\n");
     }
-
 
     @events = ();
     $alarm_header = "";
@@ -71,40 +72,40 @@ while( 1 )
 		#STATE_ALERT    => 3;
 		#STATE_TAPE     => 4;
 		
-		#Info("Last Event=".$last_event." State=".$state);
+		#If an alarm status is detected
         if ($state == STATE_ALARM || $state == STATE_ALERT)
         {
 			Info ("Alarm Detected on cam=".$monitor->{Name});
-			if (@camstatus[$monitor->{Id}] ne decodeState($state))
-			{
-				my $count = @alarmcount[$monitor->{Id}];
-				$count = $count+1;
-				#if ($count >= 2) {
-					&sendtoOH($monitor->{Id},$state);
-				#}
-				@camstatus[$monitor->{Id}] = decodeState($state);
-				@alarmcount[$monitor->{Id}] = $count;
-				Info ("Alarm Count= @alarmcount\n");
+			my $count = @alarmcount[$monitor->{Id}]; 	#Retrieve count from array
+			$count = $count+1;							#Increase count of one
+			@alarmcount[$monitor->{Id}] = $count;		#Update the array
+			if ($count >= ALARM_COUNT) {
+				if (@camstatus[$monitor->{Id}] ne decodeState($state))	#If CAM status is not equal to previus status
+				{
+					&sendtoOH($monitor->{Id},$state);					#Send notification ro OpenHab
+					@camstatus[$monitor->{Id}] = decodeState($state);	#Update the array with last status
+					Info ("Alarm Count= @alarmcount\n");				#Log alarmcount
+				}
 			}
 		}
 		
+		#If an alarm is rearmed
 		if ($state == STATE_IDLE || $state == STATE_TAPE)
         {
 			Info ("Alarm Rearmed on cam=".$monitor->{Name});
 			if (@camstatus[$monitor->{Id}] ne decodeState($state))
 			{
-				@alarmcount[$monitor->{Id}] = 0;
-				
-				&sendtoOH($monitor->{Id},$state);
-				@camstatus[$monitor->{Id}] = decodeState($state);
+				@alarmcount[$monitor->{Id}] = 0;					#reset alarmcount array
+				&sendtoOH($monitor->{Id},$state);					#send off command to OH
+				@camstatus[$monitor->{Id}] = decodeState($state);	#Update the array with last status
 				Info ("Alarm Count= @alarmcount\n");
 			}
 		}
     }
-	#Info ("cam status= @camstatus\n");
     sleep( SLEEP_DELAY );
 }
 
+#This sub decode numeric state of ZM in OH state for the Alarm's Switch
 sub decodeState
 {
 	use Switch;
@@ -121,10 +122,9 @@ sub decodeState
 	return ($oh_state);
 }
 
-#Compone il comando e lo invia via http to OpenHab
+#Compose the command for OH
 sub sendtoOH
 {
-
 	my ($monid, $stato) = @_;
 	my $oh_state = decodeState($stato);
 	
@@ -135,7 +135,7 @@ sub sendtoOH
 		my $host = OPENHAB_URL;
 		my $client = REST::Client->new(host => $host);
 		my $url = "/rest/items/CAM_ID".$monid."_ALARM/state";
-		Info("Send Command to Server: ".OPENHAB_URL." with URL: ".$url." with command: ".$oh_state);
+		Info("Send Command to Server: ".OPENHAB_URL." with URL: ".$url." ".$oh_state);
 		#Write stuff;
 		$client->PUT($url, $oh_state);
 		Info("Client Result: ".$client);
@@ -143,7 +143,6 @@ sub sendtoOH
 }
 
 # Refreshes list of monitors from DB
-# 
 sub loadMonitors
 {
     Info( "Loading monitors\n" );
