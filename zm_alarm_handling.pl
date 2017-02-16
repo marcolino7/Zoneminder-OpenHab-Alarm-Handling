@@ -135,7 +135,7 @@ sub sendtoOH
 		my $host = OPENHAB_URL;
 		my $client = REST::Client->new(host => $host);
 		my $url = "/rest/items/CAM_ID".$monid."_ALARM/state";	#Composing Item Name into REST URL
-		Info($monname." - Send Command to Server: ".OPENHAB_URL." with URL: ".$url." ".$oh_state);
+		Info($monname." - Send Command: ".OPENHAB_URL.$url." ".$oh_state);
 		#Write stuff to HTTP with REST Client
 		$client->PUT($url, $oh_state);
 		Info($monname." - Client Result: ".$client);
