@@ -6,7 +6,6 @@ use constant OPENHAB_URL => "http://openhab2:8080";		#Base URL of Openhab
 use constant MONITOR_RELOAD_INTERVAL => 300;			#Time in second for reload Monitor from ZM
 use constant SLEEP_DELAY=>2;							#Time in second for checking loop
 use constant ALARM_COUNT => 2;							#Number of alarm event to raise action to OpenHab
-
 #---------------- End of Configurations ------------------------------------------------------------------------------
 
 use strict;
@@ -30,25 +29,26 @@ my @active_connections=();
 my $alarm_header="";
 my $alarm_mid="";
 my $alarmEventId = 1;           # tags the event id along with the alarm - useful for correlation
-my @camstatus = ("NONE","NONE","NONE","NONE","NONE","NONE","OFF","OFF","OFF","OFF","OFF","OFF"); #Array che contiene gli stati delle camere
+my @camstatus = ("NONE","NONE","NONE","NONE","NONE","NONE","OFF","OFF","OFF","OFF","OFF","OFF"); #Array with alarm status
 my @firstrun = (0,0,0,0,0,0,0,0,0,0,0,0);
 my @alarmcount = (0,0,0,0,0,0,0,0,0,0,0,0);
 
-Info( "Alarm Monitor Handling module starting" );
+Info( "ALL - Alarm Monitor Handling module starting" );
 
 while( 1 )
 {
 	my $eventFound = 0;
+	#Every MONITOR_RELOAD_INTERVAL reload monitor from database
     if ( (time() - $monitor_reload_time) > MONITOR_RELOAD_INTERVAL )
         {
-        Info ("Reloading Monitors...\n");
+        Info ("ALL - Reloading Monitors...\n");
         foreach my $monitor (values(%monitors))
         {
             zmMemInvalidate( $monitor );
         }
         loadMonitors();
-		Info ("Firstrun status= @firstrun\n");
-		Info ("Alarm Status= @camstatus\n");
+		Info ("ALL - Firstrun status= @firstrun\n");
+		Info ("ALL - Alarm Status= @camstatus\n");
     }
 
     @events = ();
@@ -57,7 +57,7 @@ while( 1 )
     foreach my $monitor ( values(%monitors) )
     {
         next if ( !zmMemVerify( $monitor ) );
-
+		
 		my ( $state, $last_event )
             = zmMemRead( $monitor,
                  [ "shared_data:state",
@@ -79,13 +79,13 @@ while( 1 )
 			my $count = @alarmcount[$monitor->{Id}]; 	#Retrieve count from array
 			$count = $count+1;							#Increase count of one
 			@alarmcount[$monitor->{Id}] = $count;		#Update the array
-			Info ("Alarm Detected on cam=".$monitor->{Name});
+			Info ($monitor->{Name}." - Alarm Detected");
 			if ($count >= ALARM_COUNT) {
 				if (@camstatus[$monitor->{Id}] ne decodeState($state))	#If CAM status is not equal to previus status
 				{
-					&sendtoOH($monitor->{Id},$state);					#Send notification ro OpenHab
-					@camstatus[$monitor->{Id}] = decodeState($state);	#Update the array with last status
-					Info ("Alarm Count= @alarmcount\n");				#Log alarmcount
+					&sendtoOH($monitor->{Id},$state,$monitor->{Name});								#Send notification ro OpenHab
+					@camstatus[$monitor->{Id}] = decodeState($state);				#Update the array with last status
+					Info ($monitor->{Name}." - Global Alarm Count= @alarmcount\n");		#Log alarmcount
 				}
 			}
 		}
@@ -96,10 +96,10 @@ while( 1 )
 			if (@camstatus[$monitor->{Id}] ne decodeState($state))
 			{
 				@alarmcount[$monitor->{Id}] = 0;					#reset alarmcount array
-				&sendtoOH($monitor->{Id},$state);					#send off command to OH
+				&sendtoOH($monitor->{Id},$state,$monitor->{Name});					#send off command to OH
 				@camstatus[$monitor->{Id}] = decodeState($state);	#Update the array with last status
-				Info ("Alarm Rearmed on cam=".$monitor->{Name});
-				Info ("Alarm Count= @alarmcount\n");
+				Info ($monitor->{Name}." - Alarm Rearmed");
+				Info ($monitor->{Name}." - Global Alarm Count= @alarmcount\n");
 			}
 		}
     }
@@ -126,27 +126,26 @@ sub decodeState
 #Compose the command for OH
 sub sendtoOH
 {
-	my ($monid, $stato) = @_;
+	my ($monid, $stato,$monname) = @_;
 	my $oh_state = decodeState($stato);
 	
 	if ($oh_state ne "NONE")
 	{
-		#Gestisco il GET HTTP
 		use REST::Client;
 		my $host = OPENHAB_URL;
 		my $client = REST::Client->new(host => $host);
-		my $url = "/rest/items/CAM_ID".$monid."_ALARM/state";
-		Info("Send Command to Server: ".OPENHAB_URL." with URL: ".$url." ".$oh_state);
-		#Write stuff;
+		my $url = "/rest/items/CAM_ID".$monid."_ALARM/state";	#Composing Item Name into REST URL
+		Info($monname." - Send Command to Server: ".OPENHAB_URL." with URL: ".$url." ".$oh_state);
+		#Write stuff to HTTP with REST Client
 		$client->PUT($url, $oh_state);
-		Info("Client Result: ".$client);
+		Info($monname." - Client Result: ".$client);
 	}
 }
 
 # Refreshes list of monitors from DB
 sub loadMonitors
 {
-    Info( "Loading monitors\n" );
+    Info( "ALL - Loading monitors\n" );
     $monitor_reload_time = time();
 
     my %new_monitors = ();
@@ -181,11 +180,11 @@ sub loadMonitors
         }
         $new_monitors{$monitor->{Id}} = $monitor;
 		
-		#Verifico se è il primo avvio resetto gli stati su OH
+		#For each monitor check if is first run and if yes, send OFF to OpenHab
 		if (@firstrun[$monitor->{Id}] == 0)
 		{
-			Info ("First Run - Sendig OFF to cam ID".$monitor->{Id});
-			&sendtoOH($monitor->{Id},0);
+			Info ($monitor->{Name}." - First Run - Sendig OFF to cam ID".$monitor->{Id});
+			&sendtoOH($monitor->{Id},0,,$monitor->{Name});
 			@firstrun[$monitor->{Id}] = 1;			
 		}
     }
@@ -193,6 +192,6 @@ sub loadMonitors
 }
 
 sub signal_handler {
-	Info( "ZM Alarm Monitor Handling module stopping" );
+	Info( "ALL - ZM Alarm Monitor Handling module stopping" );
 	exit 0
 }
