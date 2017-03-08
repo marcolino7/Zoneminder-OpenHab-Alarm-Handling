@@ -5,7 +5,7 @@
 use constant OPENHAB_URL => "http://openhab2:8080";		#Base URL of Openhab
 use constant MONITOR_RELOAD_INTERVAL => 300;			#Time in second for reload Monitor from ZM
 use constant SLEEP_DELAY=>2;							#Time in second for checking loop
-use constant ALARM_COUNT => 2;							#Number of alarm event to raise action to OpenHab
+use constant ALARM_COUNT => 3;							#Number of alarm event to raise action to OpenHab
 #---------------- End of Configurations ------------------------------------------------------------------------------
 
 use strict;
@@ -93,11 +93,14 @@ while( 1 )
 		#If an alarm is rearmed
 		if ($state == STATE_IDLE || $state == STATE_TAPE)
         {
+			my $count = @alarmcount[$monitor->{Id}];
 			if (@camstatus[$monitor->{Id}] ne decodeState($state))
 			{
-				@alarmcount[$monitor->{Id}] = 0;					#reset alarmcount array
-				&sendtoOH($monitor->{Id},$state,$monitor->{Name});					#send off command to OH
-				@camstatus[$monitor->{Id}] = decodeState($state);	#Update the array with last status
+				@alarmcount[$monitor->{Id}] = 0;						#reset alarmcount array
+				if ($count >= ALARM_COUNT) {							#if alarm count greater the threashold, send the notification to OH
+					&sendtoOH($monitor->{Id},$state,$monitor->{Name});	#send off command to OH
+				}
+				@camstatus[$monitor->{Id}] = decodeState($state);		#Update the array with last status
 				Info ($monitor->{Name}." - Alarm Rearmed");
 				Info ($monitor->{Name}." - Global Alarm Count= @alarmcount\n");
 			}
